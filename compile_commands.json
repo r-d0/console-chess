@@ -1,0 +1,17 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-Werror",
+      "-Iinclude",
+      "-c",
+      "-o",
+      "build/main.o",
+      "main.c"
+    ],
+    "directory": "/home/ruadhan_darcy/c_projects/test_console_chess",
+    "file": "/home/ruadhan_darcy/c_projects/test_console_chess/main.c",
+    "output": "/home/ruadhan_darcy/c_projects/test_console_chess/build/main.o"
+  }
+]
