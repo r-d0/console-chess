@@ -17,6 +17,9 @@
 
 int white_to_move = 1;
 
+int last_white_square = 0;
+int last_black_square = 56;
+
 typedef enum {
     IS_Picking,
     IS_Picked
@@ -151,8 +154,10 @@ void draw_board_temp(){
                 int color = !white_piece + 1;
                 if (1ULL << square & available_squares)
                     color= !white_to_move + 3;
-                if (square == moving_to_square || square == selected_square)
+                if (square == selected_square)
                     color = 6;
+                if (square == moving_to_square)
+                    color = 7;
                 attron(COLOR_PAIR(color));
                 mvprintw(y,x,"%c",piece_letter);
                 attroff(COLOR_PAIR(color));
@@ -160,8 +165,8 @@ void draw_board_temp(){
                 int color = 0;
                 if (1ULL << square & available_squares)
                     color = !white_to_move+3;
-                if (square == moving_to_square || square == selected_square)
-                    color = 6;
+                if (square == moving_to_square)
+                    color = 7;
                 attron(COLOR_PAIR(color));
                 mvprintw(y,x,"%c",piece_letter);
                 attroff(COLOR_PAIR(color));
@@ -195,9 +200,6 @@ int find_new_square(Direction direction){
     switch(direction){
         case DIR_UP:
             {
-                // Check for same file
-                // If not same row, then row by row above it
-                // Each row, check one to right, then one to left, then two to right, then two to left, etc.
                 int rank = moving_to_square >> 3;
                 int file = moving_to_square & 7;
                 ulong viable_squares = available_squares | (1ULL << selected_square);
@@ -208,6 +210,7 @@ int find_new_square(Direction direction){
                     if (moves & (1ULL << target))
                         return target;
                 }
+
                 for (int r = rank + 1; r <= 7; r++){
                     int left_file, right_file;
                     left_file = right_file = file;
@@ -301,6 +304,7 @@ int find_new_square(Direction direction){
                 moves &= (~0ULL << (moving_to_square + 1));
                 if (moves)
                     return __builtin_ctzll(moves);
+
                 for (int f = file + 1; f <= 7; f++){
                     int up_rank, down_rank;
                     up_rank = down_rank = rank;
@@ -330,17 +334,45 @@ int find_new_square(Direction direction){
 void handle_movement(const int key){
     if (current_IS == IS_Picking){
         if (key == 'w' || key == KEY_UP){
-            if ((selected_square >> 3) < 7)
-                selected_square += 8;
+            if ((selected_square >> 3) < 7){
+                int attempt_square = selected_square + 8;
+                PieceOnSquare p = get_piece_on_square(attempt_square);
+                if (p.piece != PIECE_NONE){
+                    ulong check_bitboard = (white_to_move) ? white_pieces : black_pieces;
+                    if ((1ULL << attempt_square) & check_bitboard)
+                        selected_square = attempt_square;
+                }
+            }
         } else if (key == 's' || key == KEY_DOWN){
-            if ((selected_square >> 3) > 0)
-                selected_square -= 8;
+            if ((selected_square >> 3) > 0){
+                int attempt_square = selected_square - 8;
+                PieceOnSquare p = get_piece_on_square(attempt_square);
+                if (p.piece != PIECE_NONE){
+                    ulong check_bitboard = (white_to_move) ? white_pieces : black_pieces;
+                    if ((1ULL << attempt_square) & check_bitboard)
+                        selected_square = attempt_square;
+                }
+            }
         } else if (key == 'a' || key == KEY_LEFT){
-            if ((selected_square & 7) > 0)
-                selected_square--;
+            if ((selected_square & 7) > 0){
+                int attempt_square = selected_square - 1;
+                PieceOnSquare p = get_piece_on_square(attempt_square);
+                if (p.piece != PIECE_NONE){
+                    ulong check_bitboard = (white_to_move) ? white_pieces : black_pieces;
+                    if ((1ULL << attempt_square) & check_bitboard)
+                        selected_square = attempt_square;
+                }
+            }
         } else if (key == 'd' || key == KEY_RIGHT){
-            if ((selected_square & 7) < 7)
-                selected_square++;
+            if ((selected_square & 7) < 7){
+                int attempt_square = selected_square + 1;
+                PieceOnSquare p = get_piece_on_square(attempt_square);
+                if (p.piece != PIECE_NONE){
+                    ulong check_bitboard = (white_to_move) ? white_pieces : black_pieces;
+                    if ((1ULL << attempt_square) & check_bitboard)
+                        selected_square = attempt_square;
+                }
+            }
         } else if (key == '\n' || key == ' '){
             PieceOnSquare pos = get_piece_on_square(selected_square);
             PieceType piece = pos.piece;
@@ -349,6 +381,11 @@ void handle_movement(const int key){
                 current_IS = IS_Picked;
                 available_squares = get_available_moves(piece, selected_square);
                 moving_to_square = selected_square;
+                if (white_to_move){
+                    last_white_square = selected_square;
+                }else{
+                    last_black_square = selected_square;
+                }
             }
         }
     } else if (current_IS == IS_Picked){
@@ -365,7 +402,13 @@ void handle_movement(const int key){
                 combine_bitboards();
             }
 
-            selected_square = moving_to_square;
+            if (white_to_move){
+                last_black_square = moving_to_square;
+                selected_square = (1ULL << last_white_square & white_pieces) ? last_white_square : __builtin_ctzll(white_pieces);
+            } else{
+                last_white_square = moving_to_square;
+                selected_square = (1ULL << last_black_square & black_pieces) ? last_black_square : __builtin_ctzll(black_pieces);
+            }
             current_IS = IS_Picking;
             available_squares = 0ULL;
             moving_to_square = -1;
@@ -402,10 +445,11 @@ int main(){
     init_pair(4, -1, COLOR_RED); // Black moves
     init_pair(5, COLOR_BLUE, -1); // Board borders
     init_pair(6, -1, COLOR_BLUE); // Picking
+    init_pair(7, -1, COLOR_GREEN); // Selected piece
     keypad(stdscr,1);
     noecho();
     curs_set(0);
-    selected_square = 56;
+    selected_square = last_white_square;
     int running = 1;
     int key;
 
@@ -416,6 +460,7 @@ int main(){
     while(running){
         erase();
         mvprintw(0,0,"%d",moving_to_square);
+        mvprintw(1,0,"%d",selected_square);
         attron(COLOR_PAIR(5) | A_UNDERLINE);
         mvprintw(MAP_BORDERS - 2, MAP_BORDERS, "%s to move", (white_to_move) ? "White" : "Black");
         attroff(COLOR_PAIR(5) | A_UNDERLINE);
