@@ -209,25 +209,22 @@ int find_new_square(Direction direction){
                         return target;
                 }
                 for (int r = rank + 1; r <= 7; r++){
-                    int left_square  = (file > 0) ? (r << 3) | (file - 1) : -1;
-                    int right_square = (file < 7) ? (r << 3) | (file + 1) : 64;
-                    do{
-                        refresh();
-                        if (right_square <= 63){
+                    int left_file, right_file;
+                    left_file = right_file = file;
+                    while((left_file > 0) || (right_file < 7)){
+                        int r_bits = r << 3;
+                        int right_square = r_bits | right_file, left_square = r_bits | left_file;
+                        if (right_file < 7){
+                            right_file++;
                             if (viable_squares & (1ULL << right_square))
                                 return right_square;
-                            if ((right_square & 7) < 7){
-                                right_square++;
-                            }
                         }
-                        if (left_square >= 0){
+                        if (left_file > 0){
+                            left_file--;
                             if (viable_squares & (1ULL << left_square))
                                 return left_square;
-                            if ((left_square & 7) > 0){
-                                left_square--;
-                            }
                         }
-                    }while(((left_square & 7) > 0) || ((right_square & 7) < 7));
+                    }
                 }
             }
             break;
@@ -244,25 +241,21 @@ int find_new_square(Direction direction){
                         return target;
                 }
                 for (int r = rank - 1; r >= 0; r--){
-                    int left_square  = (file > 0) ? (r << 3) | (file - 1) : -1;
-                    int right_square = (file < 7) ? (r << 3) | (file + 1) : 64;
-                    do{
-                        refresh();
-                        if (left_square >= 0){
-                            if (viable_squares & (1ULL << left_square))
-                                return left_square;
-                            if ((left_square & 7) > 0){
-                                left_square--;
-                            }
-                        }
-                        if (right_square <= 63){
+                    int left_file, right_file;
+                    left_file = right_file = file;
+                    while(left_file > 0 || right_file < 7){
+                        int right_square = r << 3 | right_file, left_square = r << 3 | left_file;
+                        if (right_file < 7){
+                            right_file++;
                             if (viable_squares & (1ULL << right_square))
                                 return right_square;
-                            if ((right_square & 7) < 7){
-                                right_square++;
-                            }
                         }
-                    } while(((left_square & 7) > 0) || ((right_square & 7) < 7));
+                        if (left_file > 0){
+                            left_file--;
+                            if (viable_squares & (1ULL << left_square))
+                                return left_square;
+                        }
+                    }
                 }
 
 
@@ -273,30 +266,27 @@ int find_new_square(Direction direction){
                 int rank = moving_to_square >> 3;
                 int file = moving_to_square & 7;
                 ulong viable_squares = available_squares | (1ULL << selected_square);
-                ulong  mask = 0xffULL << (rank << 3);
+                ulong mask = 0xffULL << (rank << 3);
                 ulong moves = viable_squares & mask;
                 moves &= ((1ULL << moving_to_square) - 1);
                 if (moves)
                     return 63 - __builtin_clzll(moves);
                 for (int f = file - 1; f >= 0; f--){
-                    int up_square = (rank < 7) ? (rank+1) << 3 | f : 64;
-                    int down_square = (rank > 0) ? (rank-1) << 3 | f : -1;
-                    do{
-
-
-                        if (up_square <= 63){
-                            if (viable_squares & (1ULL << up_square))
-                                return up_square;
-                            if ((up_square >> 3) < 7)
-                                up_square+=8;
-                        }
-                        if (down_square >= 0){
+                    int up_rank, down_rank;
+                    up_rank = down_rank = rank;
+                    while(up_rank < 7 || down_rank > 0){
+                        int down_square = down_rank << 3 | f, up_square = up_rank << 3 | f;
+                        if (down_rank > 0){
+                            down_rank--;
                             if (viable_squares & (1ULL << down_square))
                                 return down_square;
-                            if ((down_square >> 3) > 0)
-                                down_square-=8;
                         }
-                    } while (((down_square >> 3) > 0) || ((up_square >> 3) < 7));
+                        if (up_rank < 7){
+                            up_rank++;
+                            if (viable_squares & (1ULL << up_square))
+                                return up_square;
+                        }
+                    }
                 }
 
             }
@@ -306,31 +296,27 @@ int find_new_square(Direction direction){
                 int rank = moving_to_square >> 3;
                 int file = moving_to_square & 7;
                 ulong viable_squares = available_squares | (1ULL << selected_square);
-                ulong  mask = 0xffULL << (rank << 3);
+                ulong mask = 0xffULL << (rank << 3);
                 ulong moves = viable_squares & mask;
                 moves &= (~0ULL << (moving_to_square + 1));
                 if (moves)
                     return __builtin_ctzll(moves);
                 for (int f = file + 1; f <= 7; f++){
-                    int up_square = (rank+1) << 3 | f;
-                    int down_square = (rank-1) << 3 | f;
-                    do{
-
-
-                        if (up_square <= 63){
+                    int up_rank, down_rank;
+                    up_rank = down_rank = rank;
+                    while(down_rank > 0 || up_rank < 7){
+                        int down_square = down_rank << 3 | f, up_square = up_rank << 3 | f;
+                        if (down_rank > 0){
+                            down_rank--;
                             if (viable_squares & (1ULL << down_square))
                                 return down_square;
-                            if ((down_square >> 3) > 0)
-                                down_square-=8;
                         }
-                        if (down_square >= 0){
+                        if (up_rank < 7){
+                            up_rank++;
                             if (viable_squares & (1ULL << up_square))
                                 return up_square;
-                            if ((up_square >> 3) < 7)
-                                up_square+=8;
                         }
-
-                    } while (((down_square >> 3) > 0) || ((up_square >> 3) < 7));
+                    }
                 }
 
 
