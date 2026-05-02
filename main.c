@@ -20,15 +20,28 @@ int white_to_move = 1;
 int last_white_square = 0;
 int last_black_square = 56;
 
+
+ulong available_squares = 0ULL;
+
+
+int selected_square = 56;
+int moving_to_square = -1;
+
+
+char error[256];
+
 typedef enum {
     IS_Picking,
     IS_Picked
 }InteractiveState;
 
-// LOOKUP TABLEs
+InteractiveState current_IS = IS_Picking;
+
+// LOOKUP TABLES
 
 ulong king_moves[64];
 ulong knight_moves[64];
+
 
 void fill_king_moves(){
     for (int square = 0; square < 63; square++){
@@ -69,12 +82,6 @@ void fill_knight_moves(){
     }
 }
 
-ulong available_squares = 0ULL;
-
-InteractiveState current_IS = IS_Picking;
-
-int selected_square = 56;
-int moving_to_square = -1;
 
 static inline void get_piece_letter(const PieceType piece, char *letter){
     if (piece == PIECE_WP || piece == PIECE_BP)
@@ -194,15 +201,23 @@ typedef enum{
     DIR_RIGHT,
 }Direction;
 
-char error[256];
 
-int find_new_square(Direction direction){
+int find_square(Direction direction){
+    ulong check_bitboard;
+    int check_square;
+    if (moving_to_square == -1){
+        check_bitboard = (white_to_move) ? white_pieces : black_pieces;
+        check_square = selected_square;
+    }else{
+        check_bitboard = available_squares;
+        check_square = moving_to_square;
+    }
     switch(direction){
         case DIR_UP:
             {
-                int rank = moving_to_square >> 3;
-                int file = moving_to_square & 7;
-                ulong viable_squares = available_squares | (1ULL << selected_square);
+                int rank = check_square >> 3;
+                int file = check_square & 7;
+                ulong viable_squares = check_bitboard | (1ULL << selected_square);
                 ulong mask = FILE_A << file;
                 ulong moves = viable_squares & mask;
                 for (int r = rank + 1; r <= 7; r++){
@@ -233,9 +248,9 @@ int find_new_square(Direction direction){
             break;
         case DIR_DOWN:
             {
-                int rank = moving_to_square >> 3;
-                int file = moving_to_square & 7;
-                ulong viable_squares = available_squares | (1ULL << selected_square);
+                int rank = check_square >> 3;
+                int file = check_square & 7;
+                ulong viable_squares = check_bitboard | (1ULL << selected_square);
                 ulong mask = FILE_A << file;
                 ulong moves = viable_squares & mask;
                 for (int r = rank - 1; r >= 0; r--){
@@ -266,12 +281,12 @@ int find_new_square(Direction direction){
             break;
         case DIR_LEFT:
             {
-                int rank = moving_to_square >> 3;
-                int file = moving_to_square & 7;
-                ulong viable_squares = available_squares | (1ULL << selected_square);
+                int rank = check_square >> 3;
+                int file = check_square & 7;
+                ulong viable_squares = check_bitboard | (1ULL << selected_square);
                 ulong mask = 0xffULL << (rank << 3);
                 ulong moves = viable_squares & mask;
-                moves &= ((1ULL << moving_to_square) - 1);
+                moves &= ((1ULL << check_square) - 1);
                 if (moves)
                     return 63 - __builtin_clzll(moves);
                 for (int f = file - 1; f >= 0; f--){
@@ -296,12 +311,12 @@ int find_new_square(Direction direction){
             break;
         case DIR_RIGHT:
             {
-                int rank = moving_to_square >> 3;
-                int file = moving_to_square & 7;
-                ulong viable_squares = available_squares | (1ULL << selected_square);
+                int rank = check_square >> 3;
+                int file = check_square & 7;
+                ulong viable_squares = check_bitboard | (1ULL << selected_square);
                 ulong mask = 0xffULL << (rank << 3);
                 ulong moves = viable_squares & mask;
-                moves &= (~0ULL << (moving_to_square + 1));
+                moves &= (~0ULL << (check_square + 1));
                 if (moves)
                     return __builtin_ctzll(moves);
 
@@ -331,48 +346,27 @@ int find_new_square(Direction direction){
 }
 
 
+
+
+
 void handle_movement(const int key){
     if (current_IS == IS_Picking){
         if (key == 'w' || key == KEY_UP){
-            if ((selected_square >> 3) < 7){
-                int attempt_square = selected_square + 8;
-                PieceOnSquare p = get_piece_on_square(attempt_square);
-                if (p.piece != PIECE_NONE){
-                    ulong check_bitboard = (white_to_move) ? white_pieces : black_pieces;
-                    if ((1ULL << attempt_square) & check_bitboard)
-                        selected_square = attempt_square;
-                }
-            }
+            int new_square = find_square(DIR_UP);
+            if (new_square != -1)
+                selected_square = new_square;
         } else if (key == 's' || key == KEY_DOWN){
-            if ((selected_square >> 3) > 0){
-                int attempt_square = selected_square - 8;
-                PieceOnSquare p = get_piece_on_square(attempt_square);
-                if (p.piece != PIECE_NONE){
-                    ulong check_bitboard = (white_to_move) ? white_pieces : black_pieces;
-                    if ((1ULL << attempt_square) & check_bitboard)
-                        selected_square = attempt_square;
-                }
-            }
+            int new_square = find_square(DIR_DOWN);
+            if (new_square != -1)
+                selected_square = new_square;
         } else if (key == 'a' || key == KEY_LEFT){
-            if ((selected_square & 7) > 0){
-                int attempt_square = selected_square - 1;
-                PieceOnSquare p = get_piece_on_square(attempt_square);
-                if (p.piece != PIECE_NONE){
-                    ulong check_bitboard = (white_to_move) ? white_pieces : black_pieces;
-                    if ((1ULL << attempt_square) & check_bitboard)
-                        selected_square = attempt_square;
-                }
-            }
+            int new_square = find_square(DIR_LEFT);
+            if (new_square != -1)
+                selected_square = new_square;
         } else if (key == 'd' || key == KEY_RIGHT){
-            if ((selected_square & 7) < 7){
-                int attempt_square = selected_square + 1;
-                PieceOnSquare p = get_piece_on_square(attempt_square);
-                if (p.piece != PIECE_NONE){
-                    ulong check_bitboard = (white_to_move) ? white_pieces : black_pieces;
-                    if ((1ULL << attempt_square) & check_bitboard)
-                        selected_square = attempt_square;
-                }
-            }
+            int new_square = find_square(DIR_RIGHT);
+            if (new_square != -1)
+                selected_square = new_square;
         } else if (key == '\n' || key == ' '){
             PieceOnSquare pos = get_piece_on_square(selected_square);
             PieceType piece = pos.piece;
@@ -388,9 +382,8 @@ void handle_movement(const int key){
                 }
             }
         }
-    } else if (current_IS == IS_Picked){
+    }else if (current_IS == IS_Picked){
         if (key == ' ' || key == '\n'){
-
             if (selected_square != moving_to_square){
                 white_to_move = !white_to_move;
                 PieceOnSquare p1 = get_piece_on_square(selected_square);
@@ -413,25 +406,26 @@ void handle_movement(const int key){
             available_squares = 0ULL;
             moving_to_square = -1;
         } else if (key == 'w' || key == KEY_UP){
-            int new_square = find_new_square(DIR_UP);
+            int new_square = find_square(DIR_UP);
             if (new_square != -1)
                 moving_to_square = new_square;
         } else if (key == 's' || key == KEY_DOWN){
-            int new_square = find_new_square(DIR_DOWN);
+            int new_square = find_square(DIR_DOWN);
             if (new_square != -1){
                 moving_to_square = new_square;
             }
         } else if (key == 'a' || key == KEY_LEFT){
-            int new_square = find_new_square(DIR_LEFT);
+            int new_square = find_square(DIR_LEFT);
             if (new_square != -1)
                 moving_to_square = new_square;
         } else if (key == 'd' || key == KEY_RIGHT){
-            int new_square = find_new_square(DIR_RIGHT);
+            int new_square = find_square(DIR_RIGHT);
             if (new_square != -1)
                 moving_to_square = new_square;
         }
     }
 }
+
 
 
 int main(){
