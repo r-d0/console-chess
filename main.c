@@ -201,150 +201,66 @@ typedef enum{
     DIR_RIGHT,
 }Direction;
 
+static inline int center_dist(int sq) {
+    int rank = sq >> 3;
+    int file = sq & 7;
+    int dr = 2 * rank - 7;
+    int df = 2 * file - 7;
+    return dr * dr + df * df;
+}
 
-int find_square(Direction direction){
+int find_square(Direction direction) {
     ulong check_bitboard;
     int check_square;
-    if (moving_to_square == -1){
+    if (moving_to_square == -1) {
         check_bitboard = (white_to_move) ? white_pieces : black_pieces;
         check_square = selected_square;
-    }else{
+    } else {
         check_bitboard = available_squares;
         check_square = moving_to_square;
     }
-    switch(direction){
-        case DIR_UP:
-            {
-                int rank = check_square >> 3;
-                int file = check_square & 7;
-                ulong viable_squares = check_bitboard | (1ULL << selected_square);
-                ulong mask = FILE_A << file;
-                ulong moves = viable_squares & mask;
-                for (int r = rank + 1; r <= 7; r++){
-                    int target = (r << 3) | file;
-                    if (moves & (1ULL << target))
-                        return target;
-                }
 
-                for (int r = rank + 1; r <= 7; r++){
-                    int left_file, right_file;
-                    left_file = right_file = file;
-                    while((left_file > 0) || (right_file < 7)){
-                        int r_bits = r << 3;
-                        int right_square = r_bits | right_file, left_square = r_bits | left_file;
-                        if (right_file < 7){
-                            right_file++;
-                            if (viable_squares & (1ULL << right_square))
-                                return right_square;
-                        }
-                        if (left_file > 0){
-                            left_file--;
-                            if (viable_squares & (1ULL << left_square))
-                                return left_square;
-                        }
-                    }
-                }
-            }
-            break;
-        case DIR_DOWN:
-            {
-                int rank = check_square >> 3;
-                int file = check_square & 7;
-                ulong viable_squares = check_bitboard | (1ULL << selected_square);
-                ulong mask = FILE_A << file;
-                ulong moves = viable_squares & mask;
-                for (int r = rank - 1; r >= 0; r--){
-                    int target = (r << 3) | file;
-                    if (moves & (1ULL << target))
-                        return target;
-                }
-                for (int r = rank - 1; r >= 0; r--){
-                    int left_file, right_file;
-                    left_file = right_file = file;
-                    while(left_file > 0 || right_file < 7){
-                        int right_square = r << 3 | right_file, left_square = r << 3 | left_file;
-                        if (right_file < 7){
-                            right_file++;
-                            if (viable_squares & (1ULL << right_square))
-                                return right_square;
-                        }
-                        if (left_file > 0){
-                            left_file--;
-                            if (viable_squares & (1ULL << left_square))
-                                return left_square;
-                        }
-                    }
-                }
+    ulong viable_squares = (check_bitboard | (1ULL << selected_square)) & ~(1ULL << check_square);
 
+    int src_rank = check_square >> 3;
+    int src_file = check_square & 7;
 
-            }
-            break;
-        case DIR_LEFT:
-            {
-                int rank = check_square >> 3;
-                int file = check_square & 7;
-                ulong viable_squares = check_bitboard | (1ULL << selected_square);
-                ulong mask = 0xffULL << (rank << 3);
-                ulong moves = viable_squares & mask;
-                moves &= ((1ULL << check_square) - 1);
-                if (moves)
-                    return 63 - __builtin_clzll(moves);
-                for (int f = file - 1; f >= 0; f--){
-                    int up_rank, down_rank;
-                    up_rank = down_rank = rank;
-                    while(up_rank < 7 || down_rank > 0){
-                        int down_square = down_rank << 3 | f, up_square = up_rank << 3 | f;
-                        if (down_rank > 0){
-                            down_rank--;
-                            if (viable_squares & (1ULL << down_square))
-                                return down_square;
-                        }
-                        if (up_rank < 7){
-                            up_rank++;
-                            if (viable_squares & (1ULL << up_square))
-                                return up_square;
-                        }
-                    }
-                }
+    int best = -1;
+    int best_primary = 0;
+    int best_secondary = 0;
 
-            }
-            break;
-        case DIR_RIGHT:
-            {
-                int rank = check_square >> 3;
-                int file = check_square & 7;
-                ulong viable_squares = check_bitboard | (1ULL << selected_square);
-                ulong mask = 0xffULL << (rank << 3);
-                ulong moves = viable_squares & mask;
-                moves &= (~0ULL << (check_square + 1));
-                if (moves)
-                    return __builtin_ctzll(moves);
+    while (viable_squares) {
+        int sq = __builtin_ctzll(viable_squares);
+        viable_squares &= viable_squares - 1; // pop lowest set bit
 
-                for (int f = file + 1; f <= 7; f++){
-                    int up_rank, down_rank;
-                    up_rank = down_rank = rank;
-                    while(down_rank > 0 || up_rank < 7){
-                        int down_square = down_rank << 3 | f, up_square = up_rank << 3 | f;
-                        if (down_rank > 0){
-                            down_rank--;
-                            if (viable_squares & (1ULL << down_square))
-                                return down_square;
-                        }
-                        if (up_rank < 7){
-                            up_rank++;
-                            if (viable_squares & (1ULL << up_square))
-                                return up_square;
-                        }
-                    }
-                }
+        int dy = (sq >> 3) - src_rank;
+        int dx = (sq & 7)  - src_file;
+        int abs_dx = dx < 0 ? -dx : dx;
+        int abs_dy = dy < 0 ? -dy : dy;
 
+        int primary, secondary;
+        switch (direction) {
+            case DIR_UP:    if (dy <= 0) continue; primary = dy;     secondary = abs_dx; break;
+            case DIR_DOWN:  if (dy >= 0) continue; primary = abs_dy; secondary = abs_dx; break;
+            case DIR_RIGHT: if (dx <= 0) continue; primary = dx;     secondary = abs_dy; break;
+            case DIR_LEFT:  if (dx >= 0) continue; primary = abs_dx; secondary = abs_dy; break;
+            default: continue;
+        }
 
-            }
-            break;
+        if (best == -1 ||
+                primary * best_secondary > best_primary * secondary || 
+                (primary * best_secondary == best_primary * secondary &&
+                 (primary < best_primary ||
+                  (primary == best_primary && center_dist(sq) < center_dist(best)))))
+        {
+            best = sq;
+            best_primary = primary;
+            best_secondary = secondary;
+        }
     }
-    return -1;
-}
 
+    return best;
+}
 
 
 
@@ -393,15 +309,19 @@ void handle_movement(const int key){
                 if (p2.bitboard)
                     *p2.bitboard &= ~(1ULL << moving_to_square);
                 combine_bitboards();
+                if (white_to_move){
+                    last_black_square = moving_to_square;
+                    selected_square = (1ULL << last_white_square & white_pieces) ? last_white_square : __builtin_ctzll(white_pieces);
+                } else{
+                    last_white_square = moving_to_square;
+                    selected_square = (1ULL << last_black_square & black_pieces) ? last_black_square : __builtin_ctzll(black_pieces);
+                }
             }
 
-            if (white_to_move){
-                last_black_square = moving_to_square;
-                selected_square = (1ULL << last_white_square & white_pieces) ? last_white_square : __builtin_ctzll(white_pieces);
-            } else{
-                last_white_square = moving_to_square;
-                selected_square = (1ULL << last_black_square & black_pieces) ? last_black_square : __builtin_ctzll(black_pieces);
-            }
+            current_IS = IS_Picking;
+            available_squares = 0ULL;
+            moving_to_square = -1;
+        }else if (key == 27){
             current_IS = IS_Picking;
             available_squares = 0ULL;
             moving_to_square = -1;
@@ -446,7 +366,7 @@ int main(){
     selected_square = last_white_square;
     int running = 1;
     int key;
-
+    set_escdelay(0);
 
     fill_king_moves();
     fill_knight_moves();
